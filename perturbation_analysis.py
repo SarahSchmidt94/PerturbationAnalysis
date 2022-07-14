@@ -69,6 +69,42 @@ def select_parameters_by_supply_chain_level(
                     exchange_list=exchange_list)
     return exchange_list
 
+def check_for_duplicates(param_list):
+    '''
+    arguments:
+        param_list : list with bw.exchanges
+    returns: prints duplicated items
+
+    '''
+    input_output_list=[]
+    for exc in param_list:
+        input_output_list.append((exc.input['code'],exc.output['code']))
+    for elem in input_output_list:
+        if input_output_list.count(elem) > 1:
+            print(elem)
+    return
+
+def check_for_loops(param_list, remove=True):
+    '''
+    arguments:
+        param_list : list with bw.exchanges
+        remove: boolean, if remove is True, loop-exchanges are removed from the parameter list
+    returns: param_list
+    output: prints loop exchanges
+
+    '''
+    loops=[]
+    for e,exc in enumerate(param_list):
+        if exc.input['code']==exc.output['code']:
+            loops.append(e)
+            print(exc)
+    loops.reverse()
+    for e in loops:
+        param_list.pop(e)
+        
+    return param_list
+    
+
 
 def parameters_to_dataframe(parameter_list,category_type=None,
                             category_dict=None):
@@ -83,8 +119,7 @@ def parameters_to_dataframe(parameter_list,category_type=None,
         returns:list of all exchanges of the activities included in the
                 activity list matching the given exchange type'''
     perturb_input=pd.DataFrame()
-    
-    
+       
     for e,exc in enumerate(parameter_list):
         perturb_input.loc[e,'from']=exc.input['name']
         perturb_input.loc[e,'from - code']=exc.input['code']
@@ -105,19 +140,19 @@ def parameters_to_dataframe(parameter_list,category_type=None,
     if category_type == None:
         perturb_input['category']=['parameter' for i in range(len(perturb_input.index))]
     elif category_type == "activity":
-        for key in category_dict.keys():
-            for i in perturb_input.index:
+        for i in perturb_input.index:
+            for key in category_dict.keys():
                 if key in perturb_input.loc[i,'to']:
                     perturb_input.loc[i,'category']=category_dict[key]
-                else:
-                    perturb_input.loc[i,'category']='others'
+            if perturb_input.loc[i,'category']==None:
+                perturb_input.loc[i,'category']='others'
     elif category_type == "input":
-        for key in category_dict.keys():
-            for i in perturb_input.index:
+        for i in perturb_input.index:
+            for key in category_dict.keys():
                 if key in perturb_input.loc[i,'from']:
-                    perturb_input.loc[i,'category']=category_dict[key]     
-                else:
-                    perturb_input.loc[i,'category']='others'
+                    perturb_input.loc[i,'category']=category_dict[key]
+            if perturb_input.loc[i,'category']==None:
+                perturb_input.loc[i,'category']='others'
     elif category_type == "location":
         for key in category_dict.keys():
             for i in perturb_input.index:
@@ -133,6 +168,16 @@ def parameters_to_dataframe(parameter_list,category_type=None,
 
 
 def create_presamples(perturb_input,database_name):
+    '''
+        arguments:
+           perturb_input: dataframe containing input data for the perturbation analysis (output of the function parameters_to_dataframe)
+           database_name: name of the database used
+       
+        returns:
+           results of the reproduced LCA calculations for an incremental increase of each parameter individually (columns: methods, indices: runs of the LCA calculation ("default" refers to the default LCA results, "run-i" refers to the reproduced calculation for an incremental increase of parameter i --> cf. index in perturb_input)
+
+    '''
+    
     parametersets_matrix_data=[]
     for i in perturb_input.index:
         if perturb_input.loc[i,'type']!='biosphere':
@@ -157,6 +202,19 @@ def create_presamples(perturb_input,database_name):
 def perform_perturbation_analysis(functional_unit,LCIA_methods,
                                   perturb_input,
                                   database_name):
+    '''
+    arguments:  
+        functional unit: {activity : amount}
+        LCIA methods: list containing at least one bw.methods-item
+        perturb_input: dataframe containing input data for the perturbation analysis (output of the function *parameters_to_dataframe*)
+        database_name: name of the database used
+       
+    returns:
+        results of the reproduced LCA calculations for an incremental increase of each parameter individually (columns: methods, indices: runs of the LCA calculation ("default" refers to the default LCA results, "run-i" refers to the reproduced calculation for an incremental increase of parameter i --> cf. index in *perturb_input*)
+
+    The caluclation is performed using *presamples*. (cf. https://presamples.readthedocs.io/en/latest/use_with_bw2.html, Lesage et al. 2018: https://doi.org/10.1007/s11367-018-1444-x)
+
+    '''
     parameter_path=create_presamples(perturb_input,database_name)
     
     C_matrices={}
@@ -200,6 +258,19 @@ def perform_perturbation_analysis(functional_unit,LCIA_methods,
 
 
 def calculate_sensitivity_ratios(LCIA_methods,perturb_results, perturb_input):
+    
+    '''
+    arguments:  
+        LCIA methods: list containing at least on bw.methods-item
+        perturb_input: dataframe containing input data for the perturbation analysis
+        (output of the function *parameters_to_dataframe*)
+        perturb_results: output of *perform_perturbation_analysis*
+       
+    returns:
+        DataFrame containing sensitivity ratios per parameter and impact category
+    '''    
+    
+    
     delta_results_relative={}
 
     for IC in LCIA_methods:
@@ -238,6 +309,16 @@ def calculate_sensitivity_ratios(LCIA_methods,perturb_results, perturb_input):
 
 
 def calculate_sensitivity_coefficients(LCIA_methods,perturb_results, perturb_input):
+    '''
+    arguments:  
+        LCIA methods: list containing at least on bw.methods-item
+        perturb_input: dataframe containing input data for the perturbation analysis
+        (output of the function *parameters_to_dataframe*)
+        perturb_results: output of *perform_perturbation_analysis*
+       
+    returns:
+        DataFrame containing sensitivity coefficients per parameter and impact category
+    '''    
     delta_results={}
 
     for IC in LCIA_methods:
@@ -276,6 +357,18 @@ def calculate_sensitivity_coefficients(LCIA_methods,perturb_results, perturb_inp
 
 
 def plot_sensitivity_ratios(sensitivity_ratio_df,LCIA_methods,LCIA_method_names=None):
+    '''
+    arguments:  
+        sensitivity_ratio_df: pd.DataFrame containing sensitivity ratios
+                              output of *calculate_sensitivity_ratios*
+        LCIA_methods: list with LCIA methods (bw.methods)
+        LCIA_method_names: list with abbreveations for LCIA-method-names /
+                           impact categories
+       
+    returns: nothing
+        (A scatter plot with sensitivity ratios per impact category is produced.
+         The results are clustered in predefined categories.)
+    '''    
     if LCIA_method_names==None:
         LCIA_method_names=[str(m) for m in LCIA_methods]
     else:
@@ -304,8 +397,10 @@ def plot_sensitivity_ratios(sensitivity_ratio_df,LCIA_methods,LCIA_method_names=
                 break
         n=key_numbers[ind_key]
 
-        ax.scatter(LCIA_method_names,(sensitivity_ratio_df.loc[i,LCIA_method_names].values.transpose()*100), 
-                   label=ind_key,color=plt.get_cmap('Set1')(n), alpha=0.7, marker=markerstyles[n])
+        ax.scatter(LCIA_method_names,
+                   (sensitivity_ratio_df.loc[i,LCIA_method_names].values.transpose()*100), 
+                   label=ind_key,color=plt.get_cmap('Set1')(n), 
+                   alpha=0.7, marker=markerstyles[n])
     ax.set_ylabel('Sensitivity Ratio [%]')
     #ax.set_ylim([0,100])
     handles, labels = plt.gca().get_legend_handles_labels()
@@ -317,7 +412,23 @@ def plot_sensitivity_ratios(sensitivity_ratio_df,LCIA_methods,LCIA_method_names=
     return
 
 
-def plot_sensitivity_ratios_with_hist(sensitivity_ratio_df,LCIA_methods,LCIA_method_names=None, hist_IC=0):
+def plot_sensitivity_ratios_with_hist(sensitivity_ratio_df,LCIA_methods,
+                                      LCIA_method_names=None, hist_IC=0):
+    '''
+    arguments:  
+        sensitivity_ratio_df: pd.DataFrame containing sensitivity ratios
+                              output of *calculate_sensitivity_ratios*
+        LCIA_methods: list with LCIA methods (bw.methods)
+        LCIA_method_names: list with abbreveations for LCIA-method-names /
+                           impact categories
+        hist_IC: 
+       
+    returns: nothing
+        (A scatter plot with sensitivity ratios per impact category is produced.
+         Next to the scatter plot, a histogram is plotted showing the relative
+         frequency of parameters in specific sensitivity ratio ranges.
+         In the scatter plot the results are clustered in predefined categories.)
+    '''    
     if LCIA_method_names==None:
         LCIA_method_names=[str(m) for m in LCIA_methods]
     else:
@@ -380,6 +491,18 @@ def plot_sensitivity_ratios_with_hist(sensitivity_ratio_df,LCIA_methods,LCIA_met
 
 
 def plot_sensitivity_ratios_absolute(sensitivity_ratio_df,LCIA_methods,LCIA_method_names=None):
+    '''
+    arguments:  
+        sensitivity_ratio_df: pd.DataFrame containing sensitivity ratios
+                              output of *calculate_sensitivity_ratios*
+        LCIA_methods: list with LCIA methods (bw.methods)
+        LCIA_method_names: list with abbreveations for LCIA-method-names /
+                           impact categories
+       
+    returns: nothing
+        (A scatter plot with sensitivity ratios per impact category is produced.
+         The results are clustered in predefined categories.)
+    ''' 
     if LCIA_method_names==None:
         LCIA_method_names=[str(m) for m in LCIA_methods]
     else:
@@ -410,7 +533,7 @@ def plot_sensitivity_ratios_absolute(sensitivity_ratio_df,LCIA_methods,LCIA_meth
 
         ax.scatter(LCIA_method_names,(sensitivity_ratio_df.loc[i,LCIA_method_names].values.transpose()*100), 
                    label=ind_key,color=plt.get_cmap('Set1')(n), alpha=0.7, marker=markerstyles[n])
-    ax.set_ylabel('Sensitivity Ratio [%]')
+    ax.set_ylabel('Sensitivity Ratio [%] (absolute values)')
     ax.set_ylim([0,100])
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
@@ -422,6 +545,23 @@ def plot_sensitivity_ratios_absolute(sensitivity_ratio_df,LCIA_methods,LCIA_meth
 
 
 def plot_sensitivity_ratios_with_hist_absolute(sensitivity_ratio_df,LCIA_methods,LCIA_method_names=None, hist_IC=0):
+    '''
+    arguments:  
+        sensitivity_ratio_df: pd.DataFrame containing sensitivity ratios
+                              output of *calculate_sensitivity_ratios*
+        LCIA_methods: list with LCIA methods (bw.methods)
+        LCIA_method_names: list with abbreveations for LCIA-method-names /
+                           impact categories
+        hist_IC: index of the LCIA_method to be displayed in the histogram
+                 (0 refers to the first item of LCIA_method, ...)
+       
+    returns: nothing
+        (A scatter plot with sensitivity ratios per impact category is produced.
+         Next to the scatter plot, a histogram is plotted showing the relative
+         frequency of parameters in specific sensitivity ratio ranges.
+         In the scatter plot the results are clustered in predefined categories.)
+        
+    '''
     if LCIA_method_names==None:
         LCIA_method_names=[str(m) for m in LCIA_methods]
     else:
@@ -483,6 +623,16 @@ def plot_sensitivity_ratios_with_hist_absolute(sensitivity_ratio_df,LCIA_methods
 
 
 def top_sensitivity_ratios(sensitivity_ratio_df,top=3):
+    '''
+    arguments:  
+        sensitivity_ratio_df: pd.DataFrame containing sensitivity ratios
+                              output of *calculate_sensitivity_ratios*
+        top: integer, number of highest scoring paramaters to be considered 
+             per impact category
+       
+    returns: pd.DataFrame with highest scoring parameters per impact category
+        
+    '''    
     topx={}
     topx_set=[]
     for method in sensitivity_ratio_df.columns[7:]:
