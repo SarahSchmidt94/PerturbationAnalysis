@@ -62,4 +62,4 @@ RDf = [m for m in bw.methods if 'ILCD 2.0 2018 midpoint no LT' in str(m) and 're
 
 LCIA_methods = [GW, OD, HTc, HTnc, PM, IR, POF, AC, TE, FE, ME, ET, LU, RDw, RDm, RDf]
 
-IC_names = ['GW', 'OD', 'HTc', 'HTnc', 'PM', 'IR', 'POF', 'AC', 'TE', 'FE', 'ME', 'ET', 'LU', 'RDw', 'RDm', 'RDf']
+LCIA_method_names = ['GW', 'OD', 'HTc', 'HTnc', 'PM', 'IR', 'POF', 'AC', 'TE', 'FE', 'ME', 'ET', 'LU', 'RDw', 'RDm', 'RDf']

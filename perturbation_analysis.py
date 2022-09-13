@@ -98,12 +98,38 @@ def check_for_loops(param_list, remove=True):
         if exc.input['code']==exc.output['code']:
             loops.append(e)
             print(exc)
-    loops.reverse()
-    for e in loops:
-        param_list.pop(e)
+            
+    if remove==True:
+        loops.reverse()
+        for e in loops:
+            param_list.pop(e)
         
     return param_list
+
+
     
+def check_for_zeros(param_list, remove=True):
+    '''
+    arguments:
+        param_list : list with bw.exchanges
+        remove: boolean, if remove is True, loop-exchanges are removed from the parameter list
+    returns: param_list
+    output: prints exchanges with amount = 0
+
+    '''
+    zeros=[]
+    for e,exc in enumerate(param_list):
+        if exc.amount == 0:
+            zeros.append(e)
+            print(exc)
+            
+    if remove==True:
+        zeros.reverse()
+        for e in zeros:
+            param_list.pop(e)
+            
+        return param_list
+
 
 
 def parameters_to_dataframe(parameter_list,category_type=None,
@@ -112,7 +138,7 @@ def parameters_to_dataframe(parameter_list,category_type=None,
         parameter_list: list of exchanges to be considered
         category_type: None, "activity", "input", "location" or "type" 
                       (default: None)
-        category_dict: A dictionary assigning categories (values) to key (keys). 
+        category_dict: A dictionary assigning categories (values) to keywords (keys). 
                       Needs to be defined in case *category_type* is "activity",
                       "input" or "location". (default: None)
        
@@ -126,7 +152,7 @@ def parameters_to_dataframe(parameter_list,category_type=None,
         if exc['type']=='technosphere':
             perturb_input.loc[e,'from - location']=exc.input['location']
         else:
-            perturb_input.loc[e,'from - location']='biosphere'
+            perturb_input.loc[e,'from - location']=str(exc.input['categories'])
         perturb_input.loc[e,'to']=exc.output['name']
         perturb_input.loc[e,'to - code']=exc.output['code']
         perturb_input.loc[e,'type']=exc['type']  
@@ -154,17 +180,20 @@ def parameters_to_dataframe(parameter_list,category_type=None,
             if perturb_input.loc[i,'category']==None:
                 perturb_input.loc[i,'category']='others'
     elif category_type == "location":
-        for key in category_dict.keys():
-            for i in perturb_input.index:
+        for i in perturb_input.index:
+            for key in category_dict.keys():
                 if key == perturb_input.loc[i,'from - location']:
-                    perturb_input.loc[i,'category']=category_dict[key]     
+                    perturb_input.loc[i,'category']=category_dict[key]    
+            if perturb_input.loc[i,'category']==None:
+                perturb_input.loc[i,'category']='others'
     elif category_type == "type":
         perturb_input['category']=perturb_input['type']
     else:
-        print('Error: Wrong category type. Allowed category types: None, "location", "activity".')
+        print('Error: Wrong category type. Allowed category types: None, "location", "activity", "input".')
     perturb_input['category']=perturb_input['category'].replace(np.nan,'others')
     
     return perturb_input
+
 
 
 def create_presamples(perturb_input,database_name):
@@ -228,7 +257,7 @@ def perform_perturbation_analysis(functional_unit,LCIA_methods,
     score=[]
 
 
-    results_fu={}
+    perturb_results={}
     lca=bw.LCA(functional_unit, LCIA_methods[0], presamples=[parameter_path])
     lca.lci()
     lca.lcia()
@@ -248,12 +277,12 @@ def perform_perturbation_analysis(functional_unit,LCIA_methods,
         for n,IC in enumerate(C_matrices.keys()):
             results_ps[str(IC)]=(C_matrices[IC]*inventory).sum()
 
-        results_fu[presamp]=results_ps
+        perturb_results[presamp]=results_ps
 
-    results_fu=pd.DataFrame.from_dict(results_fu, orient='index')
-    results_fu=results_fu.rename(index={'default amount':'default'})
+    perturb_results=pd.DataFrame.from_dict(perturb_results, orient='index')
+    perturb_results=perturb_results.rename(index={'default amount':'default'})
     print("--- %s seconds ---" % round((time.time() - start_time),2))
-    return results_fu
+    return perturb_results
 
 
 
@@ -308,7 +337,7 @@ def calculate_sensitivity_ratios(LCIA_methods,perturb_results, perturb_input):
     return sensitivity_ratio_df
 
 
-def calculate_sensitivity_coefficients(LCIA_methods,perturb_results, perturb_input):
+def calculate_sensitivity_coefficients(LCIA_methods, perturb_results, perturb_input):
     '''
     arguments:  
         LCIA methods: list containing at least on bw.methods-item
@@ -421,7 +450,7 @@ def plot_sensitivity_ratios_with_hist(sensitivity_ratio_df,LCIA_methods,
         LCIA_methods: list with LCIA methods (bw.methods)
         LCIA_method_names: list with abbreveations for LCIA-method-names /
                            impact categories
-        hist_IC: 
+        hist_IC: index of impact category displayed in the histogram
        
     returns: nothing
         (A scatter plot with sensitivity ratios per impact category is produced.
@@ -461,7 +490,7 @@ def plot_sensitivity_ratios_with_hist(sensitivity_ratio_df,LCIA_methods,
                    label=ind_key,color=plt.get_cmap('Set1')(n), alpha=0.7, marker=markerstyles[n],s=30)
 
 
-    ax1.set_ylabel('Sensitivity Ratio [%] (absolute values)')
+    ax1.set_ylabel('Sensitivity Ratio [%]')
     ax1.set_xlabel('Impact Category', labelpad=10)
     #ax1.set_ylim([0,100])
     handles, labels = ax1.get_legend_handles_labels()
@@ -612,7 +641,6 @@ def plot_sensitivity_ratios_with_hist_absolute(sensitivity_ratio_df,LCIA_methods
     ax2.hist(data*100, weights=weights*100, orientation='horizontal', bins=50, log=True, color='black')
     ax2.set_ylim(ax1.get_ylim())
     ax2.set_xlim([0.1,100])
-    #ax2.set_title('GW', y=0.99, pad=-14)
     ax2.set_ylabel('Sensitivity Ratio [%] (absolute values)')
     ax2.set_xlabel('Relative Frequency [%] \n'+str(LCIA_method_names[hist_IC]))
 
@@ -622,7 +650,7 @@ def plot_sensitivity_ratios_with_hist_absolute(sensitivity_ratio_df,LCIA_methods
     return
 
 
-def top_sensitivity_ratios(sensitivity_ratio_df,top=3):
+def top_sensitivity_ratios(sensitivity_ratio_df,top=None, above=0.1):
     '''
     arguments:  
         sensitivity_ratio_df: pd.DataFrame containing sensitivity ratios
@@ -639,12 +667,162 @@ def top_sensitivity_ratios(sensitivity_ratio_df,top=3):
         topx_IC=[]
         sensitivity_ratio_IC_absolute=abs(sensitivity_ratio_df[method])
         sensitivity_ratio_df_sorted=sensitivity_ratio_IC_absolute.sort_values(ascending=False)
-        for i in sensitivity_ratio_df_sorted[:top].index:
-            #if sensitivity_ratio_df_sorted[i] > 0.0:
-            topx_IC.append(i)
-            topx_set.append(i)
-        topx[method]=topx_IC
-    topx_set=list(set(topx_set))
-
-    
+        if top!=None:
+            for i in sensitivity_ratio_df_sorted[:top].index:    
+                #if sensitivity_ratio_df_sorted[i] > 0.0:
+                topx_IC.append(i)
+                topx_set.append(i)
+            topx[method]=topx_IC
+        else:
+            for i in sensitivity_ratio_df_sorted.index:
+                if sensitivity_ratio_df_sorted.loc[i] >= above:
+                    topx_IC.append(i)
+                    topx_set.append(i)
+            topx[method]=topx_IC
+    topx_set=list(set(topx_set))  
     return sensitivity_ratio_df.loc[topx_set]
+
+
+def plot_sensitivity_ratios_with_hist_absolute_with_legend(sensitivity_ratio_df,
+                                                           LCIA_methods,
+                                                           LCIA_method_names=None, 
+                                                           hist_IC=0, 
+                                                           top=None, 
+                                                           SR_min=0.3):
+    '''
+    arguments:  
+        sensitivity_ratio_df: pd.DataFrame containing sensitivity ratios
+                              output of *calculate_sensitivity_ratios*
+        LCIA_methods: list with LCIA methods (bw.methods)
+        LCIA_method_names: list with abbreveations for LCIA-method-names /
+                           impact categories
+        hist_IC: index of the LCIA_method to be displayed in the histogram
+                 (0 refers to the first item of LCIA_method, ...)
+        top: number of top parameters per impact category to be labeled and
+             explained in the legend, default: None
+        SR_min: parameters with SR > SR_min are labeled and explained in the
+                legend; SR_min is considered only, if top = None
+       
+    returns: legend
+        (A scatter plot with sensitivity ratios per impact category is produced.
+         Next to the scatter plot, a histogram is plotted showing the relative
+         frequency of parameters in specific sensitivity ratio ranges.
+         In the scatter plot the results are clustered in predefined categories.)
+        
+    '''
+    if LCIA_method_names==None:
+        LCIA_method_names=[str(m) for m in LCIA_methods]
+    else:
+        method_dict={}
+        for m,meth in enumerate(LCIA_methods):
+            method_dict[str(meth)]=LCIA_method_names[m]
+            sensitivity_ratio_df=sensitivity_ratio_df.rename(columns=method_dict)
+
+    topx={}
+    topx_set=[]
+    for method in sensitivity_ratio_df.columns[7:]:
+        topx_IC=[]
+        sensitivity_ratio_IC_absolute=abs(sensitivity_ratio_df[method])
+        sensitivity_ratio_df_sorted=sensitivity_ratio_IC_absolute.sort_values(ascending=False)
+        if top!=None:
+            for i in sensitivity_ratio_df_sorted[:top].index:    
+                topx_IC.append(i)
+                topx_set.append(i)
+            topx[method]=topx_IC
+        else:
+            for i in sensitivity_ratio_df_sorted.index:
+                if sensitivity_ratio_df_sorted.loc[i] >= SR_min:
+                    topx_IC.append(i)
+                    topx_set.append(i)
+            topx[method]=topx_IC
+    topx_set=list(set(topx_set))  
+    
+    
+    topx_list=[]
+    topx_list_list=[*topx.values()]
+    
+    for l in topx_list_list:
+        for i in l:
+            topx_list.append(i)
+    
+    frequency_topx=dict(pd.Series(topx_list).value_counts())
+    
+    
+    label={}
+    
+    for p,i in enumerate(frequency_topx.keys()):
+        label[i]=p+1
+    label
+    
+    legend=sensitivity_ratio_df.loc[topx_set,['from','to','category']]
+    legend=legend.rename(index=label)
+    
+    for k in frequency_topx.keys():
+        i=label[k]
+        legend.loc[i,'frequency in top results']=str(frequency_topx[k])
+        
+    legend=legend.sort_index()
+    
+    
+    markerstyles=["o","v","<",">","s","p","d","h","X"]
+    
+    if LCIA_method_names==None:
+        LCIA_method_names=[str(m) for m in LCIA_methods]
+    else:
+        method_dict={}
+        for m,meth in enumerate(LCIA_methods):
+            method_dict[str(meth)]=LCIA_method_names[m]
+            sensitivity_ratio_df=sensitivity_ratio_df.rename(columns=method_dict)
+    
+        
+    indice_dict={}
+    for cat in sensitivity_ratio_df['category'].unique():
+        indice_dict[cat]=[i for i in sensitivity_ratio_df[sensitivity_ratio_df['category']==cat].index]
+        
+    key_numbers={}
+    for n,k in enumerate(indice_dict.keys()):
+        key_numbers[k]=n
+        
+    fig, (ax1,ax2) = plt.subplots(1,2,gridspec_kw={'width_ratios': [5, 1]})
+            
+    for i in sensitivity_ratio_df.index:
+        for n,ind_list in enumerate(indice_dict.values()):
+            if i in ind_list:
+                ind_key=list(indice_dict.keys())[n]
+                break
+        n=key_numbers[ind_key]
+    
+        ax1.scatter(LCIA_method_names,abs(sensitivity_ratio_df.loc[i,LCIA_method_names].values.transpose()*100), 
+                   label=ind_key,color=plt.get_cmap('Set1')(n), alpha=0.7, marker=markerstyles[n],s=30)
+        
+        
+        for n,IC in enumerate(LCIA_method_names):
+            if i in topx[IC]: 
+                if i%2==0:
+                    ax1.text(x=n+0.1, y=abs(sensitivity_ratio_df.loc[i,IC])*100-1,s=str(label[i]),fontsize=8)
+                elif (i%3==0) & (i%2!=0):
+                    ax1.text(x=n-0.3, y=abs(sensitivity_ratio_df.loc[i,IC])*100-1,s=str(label[i]),fontsize=8)
+                else:
+                    ax1.text(x=n+0.2, y=abs(sensitivity_ratio_df.loc[i,IC])*100-1,s=str(label[i]),fontsize=8)
+    ax1.set_ylabel('Sensitivity Ratio [%] (absolute values)')
+    ax1.set_xlabel('Impact Category', labelpad=10)
+    ax1.set_ylim([0,100])
+    handles, labels = ax1.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    # plt.legend(by_label.values(), by_label.keys(), loc='upper right', framealpha=1)
+    lgnd=ax1.legend(by_label.values(), by_label.keys(), bbox_to_anchor=(0,-0.4,1,.1), ncol=3, loc='lower center', frameon=False, fontsize=12)
+    
+    for i,l in enumerate(lgnd.legendHandles):
+        lgnd.legendHandles[i]._sizes = [30]
+    
+    #histogram
+    data=abs(sensitivity_ratio_df[LCIA_method_names[hist_IC]]).values
+    weights = np.ones_like(data) / len(data)
+    ax2.hist(data*100, weights=weights*100, orientation='horizontal', bins=50, log=True, color='black')
+    ax2.set_ylim([0,100])
+    ax2.set_ylabel('Sensitivity Ratio [%] (absolute values)')
+    ax2.set_xlabel('Relative Frequency [%] \n'+str(LCIA_method_names[hist_IC]))
+    
+    fig.set_facecolor('white')
+    fig.set_size_inches(12,8)
+    return legend
