@@ -11,6 +11,7 @@ import pandas as pd
 import brightway2 as bw
 import presamples
 import time
+import plotly.express as px
 
 def select_parameters_by_activity_list(activity_list,exc_type='all'):
     '''arguments:
@@ -161,7 +162,7 @@ def parameters_to_dataframe(parameter_list,category_type=None,
 
     for i in perturb_input.index:
         perturb_input['run'+str(i)]=perturb_input['default amount']
-        perturb_input.loc[i, 'run'+str(i)]=perturb_input.loc[i,'default amount']*1.1
+        perturb_input.loc[i, 'run'+str(i)]=perturb_input.loc[i,'default amount']*1.01
         
     if category_type == None:
         perturb_input['category']=['parameter' for i in range(len(perturb_input.index))]
@@ -385,6 +386,53 @@ def calculate_sensitivity_coefficients(LCIA_methods, perturb_results, perturb_in
     return sensitivity_coefficient_df
 
 
+
+
+def plot_sensitivity_ratios_plotly(sensitivity_ratio_df, LCIA_method_names):
+    '''arguments:
+       sensitivity_ratio_df: pd.DataFrame containing sensitivity ratios
+                             output of *calculate_sensitivity_ratios*
+       LCIA_method_names: list with abbreveations for LCIA-method-names /
+                          impact categories
+       
+       returns: nothing
+           (A bar chart with sensitivity ratios per impact category is produced.
+            The results are clustered in predefined categories.)'''
+    plotly_df=pd.DataFrame()
+    ind=0
+    for p in sensitivity_ratio_df.index:
+        for i,IC in enumerate(sensitivity_ratio_df.columns[7:]):
+            plotly_df.loc[ind, 'Exchange']='FROM:'+sensitivity_ratio_df.loc[p,'from']+', TO:'+sensitivity_ratio_df.loc[p,'to']
+            plotly_df.loc[ind, 'Category']=sensitivity_ratio_df.loc[p,'category']
+            if LCIA_method_names==None:
+                plotly_df.loc[ind, 'Impact Category']=IC
+            else:
+                plotly_df.loc[ind, 'Impact Category']=LCIA_method_names[i]
+            plotly_df.loc[ind, 'Sensitivity Ratio [%]']=sensitivity_ratio_df.loc[p,IC]*100
+            ind=ind+1
+            
+    ylimit_max=(round(plotly_df["Sensitivity Ratio [%]"].max()/10)+1)*10
+    if plotly_df["Sensitivity Ratio [%]"].min() > 0:
+        ylimit_min=0
+    else:
+        ylimit_min=(round(plotly_df["Sensitivity Ratio [%]"].min()/10)-1)*10
+        
+    fig = px.bar(plotly_df, y="Exchange", x="Sensitivity Ratio [%]", color="Category", orientation='h',
+            animation_frame="Impact Category", template="simple_white",)
+    fig.update_layout(#legend=dict(title=None, orientation="h", y=-0.4, yanchor="bottom", x=0.5, xanchor="center"),
+                     #title=dict(y=0.9,x=0.5,xanchor='center', ),
+                     font_family='Arial',
+                     xaxis=dict(range=[ylimit_min, ylimit_max]),
+                     hoverlabel=dict(bgcolor="white", font_size=10,font_family="Arial")
+                        )
+    fig["layout"].pop("updatemenus")
+    fig.show()
+
+    return
+
+
+
+
 def plot_sensitivity_ratios(sensitivity_ratio_df,LCIA_methods,LCIA_method_names=None):
     '''
     arguments:  
@@ -439,6 +487,9 @@ def plot_sensitivity_ratios(sensitivity_ratio_df,LCIA_methods,LCIA_method_names=
     fig.set_size_inches(10,6)
     
     return
+
+
+
 
 
 def plot_sensitivity_ratios_with_hist(sensitivity_ratio_df,LCIA_methods,
@@ -514,7 +565,7 @@ def plot_sensitivity_ratios_with_hist(sensitivity_ratio_df,LCIA_methods,
 
     fig.set_facecolor('white')
     fig.set_size_inches(12,6)
-    
+    ax1.get_shared_y_axes().join(ax1, ax2)    
     return
 
 
@@ -625,28 +676,27 @@ def plot_sensitivity_ratios_with_hist_absolute(sensitivity_ratio_df,LCIA_methods
 
     ax1.set_ylabel('Sensitivity Ratio [%] (absolute values)')
     ax1.set_xlabel('Impact Category', labelpad=10)
-    ax1.set_ylim([0,100])
+ 
+    #ax1.set_ylim([0,100])
     handles, labels = ax1.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
-    lgnd=ax1.legend(by_label.values(), by_label.keys(), loc='upper right', framealpha=1)
-    #lgnd=ax1.legend(by_label.values(), by_label.keys(), bbox_to_anchor=(0,-0.4,1,.1), ncol=3, loc='lower center', frameon=False, fontsize=12)
-
+    # plt.legend(by_label.values(), by_label.keys(), loc='upper right', framealpha=1)
+    lgnd=ax1.legend(by_label.values(), by_label.keys(), bbox_to_anchor=(0,-0.4,1,.1), ncol=3, loc='lower center', frameon=False, fontsize=12)
+    
     for i,l in enumerate(lgnd.legendHandles):
         lgnd.legendHandles[i]._sizes = [30]
-
-    #ax1.legend(by_label.values(), by_label.keys(), loc='upper right', framealpha=1)
+    
     #histogram
     data=abs(sensitivity_ratio_df[LCIA_method_names[hist_IC]]).values
     weights = np.ones_like(data) / len(data)
     ax2.hist(data*100, weights=weights*100, orientation='horizontal', bins=50, log=True, color='black')
-    ax2.set_ylim(ax1.get_ylim())
-    ax2.set_xlim([0.1,100])
+    #ax2.set_ylim([0,100])
     ax2.set_ylabel('Sensitivity Ratio [%] (absolute values)')
     ax2.set_xlabel('Relative Frequency [%] \n'+str(LCIA_method_names[hist_IC]))
-
-    fig.set_facecolor('white')
-    fig.set_size_inches(12,6)
     
+    fig.set_facecolor('white')
+    fig.set_size_inches(12,8)
+    ax1.get_shared_y_axes().join(ax1, ax2)     
     return
 
 
@@ -806,7 +856,7 @@ def plot_sensitivity_ratios_with_hist_absolute_with_legend(sensitivity_ratio_df,
                     ax1.text(x=n+0.2, y=abs(sensitivity_ratio_df.loc[i,IC])*100-1,s=str(label[i]),fontsize=8)
     ax1.set_ylabel('Sensitivity Ratio [%] (absolute values)')
     ax1.set_xlabel('Impact Category', labelpad=10)
-    ax1.set_ylim([0,100])
+    #ax1.set_ylim([0,100])
     handles, labels = ax1.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     # plt.legend(by_label.values(), by_label.keys(), loc='upper right', framealpha=1)
@@ -819,10 +869,11 @@ def plot_sensitivity_ratios_with_hist_absolute_with_legend(sensitivity_ratio_df,
     data=abs(sensitivity_ratio_df[LCIA_method_names[hist_IC]]).values
     weights = np.ones_like(data) / len(data)
     ax2.hist(data*100, weights=weights*100, orientation='horizontal', bins=50, log=True, color='black')
-    ax2.set_ylim([0,100])
+    #ax2.set_ylim([0,100])
     ax2.set_ylabel('Sensitivity Ratio [%] (absolute values)')
     ax2.set_xlabel('Relative Frequency [%] \n'+str(LCIA_method_names[hist_IC]))
     
     fig.set_facecolor('white')
     fig.set_size_inches(12,8)
+    ax1.get_shared_y_axes().join(ax1, ax2)
     return legend
